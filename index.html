@@ -189,12 +189,49 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
     <div class="logo" id="loginLogoFallback" style="display:none;width:48px;height:48px;border-radius:9px;margin:0 auto 1rem;"><span style="font-size:16px;">IM</span></div>
     <div class="login-title">Fechamento Orçamentário</div>
     <div class="login-sub">Iguaçu Máquinas · Controladoria Corporativa</div>
-    <div class="form-group" style="text-align:left;margin-bottom:1rem;">
-      <label>Senha de acesso</label>
-      <input type="password" id="loginPass" placeholder="Digite a senha" onkeydown="if(event.key==='Enter')doLogin()">
+
+    <!-- TELA: LOGIN -->
+    <div id="screenLogin">
+      <div class="form-group" style="text-align:left;margin-bottom:0.75rem;">
+        <label>E-mail</label>
+        <input type="email" id="loginEmail" placeholder="seu@email.com.br" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="form-group" style="text-align:left;margin-bottom:1rem;">
+        <label>Senha</label>
+        <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <button class="btn primary" style="width:100%;justify-content:center;margin-bottom:0.75rem;" onclick="doLogin()">Entrar</button>
+      <div style="text-align:center;"><button class="btn sm" style="border:none;background:none;color:var(--text2);cursor:pointer;" onclick="showScreen('screenForgot')">Esqueci minha senha</button></div>
+      <div class="login-error" id="loginError">E-mail ou senha incorretos.</div>
     </div>
-    <button class="btn primary" style="width:100%;justify-content:center;" onclick="doLogin()">Entrar</button>
-    <div class="login-error" id="loginError">Senha incorreta. Tente novamente.</div>
+
+    <!-- TELA: ESQUECI SENHA -->
+    <div id="screenForgot" style="display:none;">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:1rem;">Informe seu e-mail e enviaremos um link para redefinir sua senha.</div>
+      <div class="form-group" style="text-align:left;margin-bottom:1rem;">
+        <label>E-mail</label>
+        <input type="email" id="forgotEmail" placeholder="seu@email.com.br">
+      </div>
+      <button class="btn primary" style="width:100%;justify-content:center;margin-bottom:0.75rem;" onclick="doForgot()">Enviar link de redefinição</button>
+      <div style="text-align:center;"><button class="btn sm" style="border:none;background:none;color:var(--text2);cursor:pointer;" onclick="showScreen('screenLogin')">Voltar ao login</button></div>
+      <div class="login-error" id="forgotError"></div>
+      <div id="forgotSuccess" style="font-size:12px;color:#3B6D11;margin-top:8px;display:none;">Link enviado! Verifique seu e-mail.</div>
+    </div>
+
+    <!-- TELA: TROCAR SENHA (primeiro acesso ou reset) -->
+    <div id="screenChangePass" style="display:none;">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:1rem;">Por segurança, defina uma nova senha para continuar.</div>
+      <div class="form-group" style="text-align:left;margin-bottom:0.75rem;">
+        <label>Nova senha</label>
+        <input type="password" id="newPass1" placeholder="Mínimo 8 caracteres">
+      </div>
+      <div class="form-group" style="text-align:left;margin-bottom:1rem;">
+        <label>Confirme a senha</label>
+        <input type="password" id="newPass2" placeholder="Repita a senha">
+      </div>
+      <button class="btn primary" style="width:100%;justify-content:center;" onclick="doChangePass()">Salvar nova senha</button>
+      <div class="login-error" id="changePassError"></div>
+    </div>
   </div>
 </div>
 
@@ -312,8 +349,8 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
   <div class="tbl-wrap">
     <table class="tbl">
       <thead><tr>
-        <th style="width:20%">Senha / Login</th>
-        <th style="width:25%">Nome / Rótulo</th>
+        <th style="width:25%">E-mail</th>
+        <th style="width:20%">Nome / Rótulo</th>
         <th style="width:20%">Departamento</th>
         <th style="width:15%">Perfil</th>
         <th style="width:20%"></th>
@@ -464,7 +501,7 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
       <div class="form-group"><label>Nome / Rótulo (ex: Comercial · Visualização)</label><input type="text" id="uLabel" placeholder="Como aparece no sistema"></div>
     </div>
     <div class="form-row cols-2">
-      <div class="form-group"><label>Senha de acesso</label><input type="text" id="uPass" placeholder="Ex: COMERCIAL26"></div>
+      <div class="form-group"><label>E-mail</label><input type="email" id="uEmail" placeholder="email@iguacumaquinas.com.br"></div>
       <div class="form-group"><label>Perfil</label><select id="uRole"><option value="view">Visualização</option><option value="edit">Edição (Controladoria)</option></select></div>
     </div>
     <div class="form-row cols-1">
@@ -482,14 +519,6 @@ const SUPABASE_URL='https://rorriqsetffygtmybnuv.supabase.co';
 const SUPABASE_KEY='sb_publishable_BQ7D9YBAK0mt4dHLUMeTRg_uOanaKOC';
 const CC_EMAIL='controladoria@iguacumaquinas.com.br';
 
-// Senhas: edit = controladoria vê tudo; view por área = só vê reuniões do setor
-const PASSWORDS={
-  'IG1958':{role:'edit', dept:null, label:'Controladoria · Edição'},
-  'IG2026':{role:'view', dept:null, label:'Visualização Geral'},
-};
-// Para adicionar senha por área: 'SENHA':{role:'view', dept:'Nome do Departamento', label:'Área · Visualização'}
-// Exemplo: 'COMERCIAL26':{role:'view', dept:'Comercial', label:'Comercial · Visualização'}
-
 let sb=null;
 try{ sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY); }catch(e){}
 
@@ -503,36 +532,80 @@ function fmtDate(d){if(!d)return'';const[y,m,day]=d.split('-');return`${day}/${m
 function impC(i){return i==='Alto'?'alto':i==='Médio'?'medio':'baixo';}
 function stC(s){return s==='Concluído'?'concluido':s==='Iniciado'?'iniciado':s==='Justificativa'?'justif':'pendente';}
 
+// ---- AUTH SCREENS ----
+function showScreen(id){
+  ['screenLogin','screenForgot','screenChangePass'].forEach(s=>{
+    document.getElementById(s).style.display=s===id?'block':'none';
+  });
+}
+
 // ---- LOGIN ----
-function doLogin(){
-  const v=document.getElementById('loginPass').value.trim();
-  const found=PASSWORDS[v];
-  if(!found){ document.getElementById('loginError').style.display='block'; return; }
-  userRole=found.role; userDept=found.dept; userLabel=found.label;
-  sessionStorage.setItem('iguacu_role',userRole);
-  sessionStorage.setItem('iguacu_dept',userDept||'');
-  sessionStorage.setItem('iguacu_label',userLabel);
+async function doLogin(){
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPass').value;
+  const errEl=document.getElementById('loginError');
+  errEl.style.display='none';
+  if(!email||!pass){errEl.textContent='Preencha e-mail e senha.';errEl.style.display='block';return;}
+  if(!sb){errEl.textContent='Sem conexão com o servidor.';errEl.style.display='block';return;}
+  const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
+  if(error){errEl.textContent='E-mail ou senha incorretos.';errEl.style.display='block';return;}
+  await afterLogin(data.user);
+}
+
+async function afterLogin(user){
+  const{data:profile}=await sb.from('profiles').select('*').eq('id',user.id).single();
+  if(!profile){showScreen('screenChangePass');return;}
+  userRole=profile.role;
+  userDept=profile.dept||null;
+  userLabel=profile.label||user.email;
   enterApp();
 }
-function doLogout(){ sessionStorage.clear(); location.reload(); }
+
+async function doForgot(){
+  const email=document.getElementById('forgotEmail').value.trim();
+  const errEl=document.getElementById('forgotError');
+  const okEl=document.getElementById('forgotSuccess');
+  errEl.style.display='none';okEl.style.display='none';
+  if(!email){errEl.textContent='Informe o e-mail.';errEl.style.display='block';return;}
+  const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:'https://victoraamorim.github.io/fechamento-orcamentario/'});
+  if(error){errEl.textContent='Erro: '+error.message;errEl.style.display='block';return;}
+  okEl.style.display='block';
+}
+
+async function doChangePass(){
+  const p1=document.getElementById('newPass1').value;
+  const p2=document.getElementById('newPass2').value;
+  const errEl=document.getElementById('changePassError');
+  errEl.style.display='none';
+  if(p1.length<8){errEl.textContent='A senha deve ter pelo menos 8 caracteres.';errEl.style.display='block';return;}
+  if(p1!==p2){errEl.textContent='As senhas não coincidem.';errEl.style.display='block';return;}
+  const{error}=await sb.auth.updateUser({password:p1});
+  if(error){errEl.textContent='Erro: '+error.message;errEl.style.display='block';return;}
+  const{data:{user}}=await sb.auth.getUser();
+  if(user) await afterLogin(user);
+}
+
+async function doLogout(){
+  if(sb) await sb.auth.signOut();
+  location.reload();
+}
+
 function enterApp(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='block';
-  document.body.classList.toggle('role-view', userRole==='view');
-  document.getElementById('roleBadge').textContent = userLabel||'Visualização';
+  document.body.classList.toggle('role-view',userRole==='view');
+  document.getElementById('roleBadge').textContent=userLabel||'Visualização';
   load();
-  if(userRole==='edit'){ loadUsers(); rebuildPasswords(); }
+  if(userRole==='edit'){loadUsers();}
   loadCCs();
 }
-(function checkSession(){
-  const r=sessionStorage.getItem('iguacu_role');
-  if(r==='edit'||r==='view'){
-    userRole=r;
-    userDept=sessionStorage.getItem('iguacu_dept')||null;
-    userLabel=sessionStorage.getItem('iguacu_label')||'';
-    if(userDept==='') userDept=null;
-    enterApp();
-  }
+
+(async function checkSession(){
+  if(!sb) return;
+  const hash=window.location.hash;
+  if(hash.includes('type=recovery')){showScreen('screenChangePass');return;}
+  const{data:{session}}=await sb.auth.getSession();
+  if(session?.user) await afterLogin(session.user);
 })();
 
 // ---- DATA: SUPABASE ----
@@ -1097,19 +1170,19 @@ let editUserId=null;
 let usersCache=[];
 
 async function loadUsers(){
-  if(!sb) return;
-  const{data,error}=await sb.from('users').select('*').order('created_at');
+  if(!sb)return;
+  const{data,error}=await sb.from('profiles').select('*').order('created_at');
   if(!error) usersCache=data||[];
   renderUsers();
 }
 
 function renderUsers(){
   const body=document.getElementById('usersBody');
-  if(!body) return;
-  if(!usersCache.length){body.innerHTML=`<tr><td colspan="5"><div class="empty"><i class="ti ti-users-off"></i><p>Nenhum usuário cadastrado além dos padrões do sistema.</p></div></td></tr>`;return;}
+  if(!body)return;
+  if(!usersCache.length){body.innerHTML=`<tr><td colspan="5"><div class="empty"><i class="ti ti-users-off"></i><p>Nenhum usuário cadastrado.</p></div></td></tr>`;return;}
   body.innerHTML=usersCache.map(u=>`<tr>
-    <td style="font-weight:600;font-family:monospace;">${u.pass}</td>
-    <td>${u.label}</td>
+    <td style="font-size:12px;">${u.email||'—'}</td>
+    <td>${u.label||'—'}</td>
     <td style="color:var(--text2);">${u.dept||'Todos'}</td>
     <td><span class="badge ${u.role==='edit'?'iniciado':'pendente'}">${u.role==='edit'?'Edição':'Visualização'}</span></td>
     <td style="display:flex;gap:4px;">
@@ -1122,18 +1195,16 @@ function renderUsers(){
 function openUserModal(){
   editUserId=null;
   document.getElementById('userModalTitle').textContent='Novo usuário';
-  document.getElementById('uLabel').value='';
-  document.getElementById('uPass').value='';
+  ['uEmail','uLabel','uDept'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('uRole').value='view';
-  document.getElementById('uDept').value='';
   document.getElementById('userOverlay').classList.add('open');
 }
 function openEditUser(id){
   const u=usersCache.find(u=>u.id===id);if(!u)return;
   editUserId=id;
   document.getElementById('userModalTitle').textContent='Editar usuário';
+  document.getElementById('uEmail').value=u.email||'';
   document.getElementById('uLabel').value=u.label||'';
-  document.getElementById('uPass').value=u.pass||'';
   document.getElementById('uRole').value=u.role||'view';
   document.getElementById('uDept').value=u.dept||'';
   document.getElementById('userOverlay').classList.add('open');
@@ -1142,39 +1213,36 @@ function closeUserModal(){document.getElementById('userOverlay').classList.remov
 
 async function saveUser(){
   const label=document.getElementById('uLabel').value.trim();
-  const pass=document.getElementById('uPass').value.trim();
+  const email=document.getElementById('uEmail').value.trim();
   const role=document.getElementById('uRole').value;
   const dept=document.getElementById('uDept').value.trim()||null;
-  if(!label||!pass){alert('Preencha nome e senha.');return;}
+  if(!label||!email){alert('Preencha nome e e-mail.');return;}
   if(!sb){alert('Sem conexão com o banco.');return;}
-  const data={label,pass,role,dept};
-  let error;
   if(editUserId){
-    ({error}=await sb.from('users').update(data).eq('id',editUserId));
+    const{error}=await sb.from('profiles').update({label,role,dept}).eq('id',editUserId);
+    if(error){alert('Erro ao salvar: '+error.message);return;}
   } else {
-    ({error}=await sb.from('users').insert({...data,created_at:new Date().toISOString()}));
+    const tempPass='Iguacu@'+Math.random().toString(36).slice(2,8);
+    const{data,error}=await sb.auth.signUp({email,password:tempPass,options:{emailRedirectTo:'https://victoraamorim.github.io/fechamento-orcamentario/'}});
+    if(error){alert('Erro ao criar usuário: '+error.message);return;}
+    if(data?.user){
+      await sb.from('profiles').insert({id:data.user.id,label,role,dept,email});
+      await sb.auth.resetPasswordForEmail(email,{redirectTo:'https://victoraamorim.github.io/fechamento-orcamentario/'});
+      alert(`Usuário criado! Um e-mail de definição de senha foi enviado para ${email}.`);
+    }
   }
-  if(error){alert('Erro ao salvar: '+error.message);return;}
   closeUserModal();
   await loadUsers();
-  // Rebuild dynamic PASSWORDS from DB
-  await rebuildPasswords();
 }
 
 async function deleteUser(id){
   if(!confirm('Excluir este usuário?'))return;
   if(!sb)return;
-  await sb.from('users').delete().eq('id',id);
+  await sb.from('profiles').delete().eq('id',id);
   await loadUsers();
-  await rebuildPasswords();
 }
 
-async function rebuildPasswords(){
-  if(!sb)return;
-  const{data}=await sb.from('users').select('*');
-  if(!data)return;
-  data.forEach(u=>{PASSWORDS[u.pass]={role:u.role,dept:u.dept||null,label:u.label};});
-}
+async function rebuildPasswords(){}
 
 function exportJSON(){
   const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
