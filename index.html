@@ -185,7 +185,8 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
 <!-- LOGIN -->
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
-    <div class="logo" style="width:48px;height:48px;border-radius:9px;"><span style="font-size:16px;">IM</span></div>
+    <img src="logo.png" alt="Iguaçu Máquinas" style="height:56px;object-fit:contain;margin:0 auto 1rem;display:block;" onerror="this.style.display='none';document.getElementById('loginLogoFallback').style.display='flex'">
+    <div class="logo" id="loginLogoFallback" style="display:none;width:48px;height:48px;border-radius:9px;margin:0 auto 1rem;"><span style="font-size:16px;">IM</span></div>
     <div class="login-title">Fechamento Orçamentário</div>
     <div class="login-sub">Iguaçu Máquinas · Controladoria Corporativa</div>
     <div class="form-group" style="text-align:left;margin-bottom:1rem;">
@@ -324,7 +325,7 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
 <!-- MODAL PONTO -->
 <div class="overlay no-print" id="ptOverlay">
   <div class="modal">
-    <div class="modal-title"><span id="ptModalTitle">Novo ponto</span><button class="btn sm" onclick="closePtModal()"><i class="ti ti-x"></i></button></div>
+    <div class="modal-title"><span id="ptModalTitle">Novo tópico</span><button class="btn sm" onclick="closePtModal()"><i class="ti ti-x"></i></button></div>
     <div class="form-row cols-2">
       <div class="form-group"><label>Tópico</label><input type="text" id="pTopic" placeholder="Ex: Desvio de receita, Custo acima do orçado..."></div>
       <div class="form-group"><label>Impacto</label><select id="pImpact"><option>Baixo</option><option selected>Médio</option><option>Alto</option></select></div>
@@ -345,8 +346,40 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
       <div class="form-group"><label>Status</label><select id="pStatus"><option>Pendente</option><option>Iniciado</option><option>Justificativa</option><option>Concluído</option></select></div>
     </div>
     <div class="btn-row">
-      <button class="btn primary" onclick="savePt()">Salvar ponto</button>
+      <button class="btn primary" onclick="savePt()">Salvar tópico</button>
       <button class="btn" onclick="closePtModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL E-MAIL -->
+<div class="overlay no-print" id="emailOverlay">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title">
+      <span><i class="ti ti-mail"></i> Enviar relatório por e-mail</span>
+      <button class="btn sm" onclick="closeEmailModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="emailMtgInfo" style="font-size:13px;color:var(--text2);margin-bottom:1rem;"></div>
+    <div class="form-row cols-1" style="margin-bottom:0.75rem;">
+      <div class="form-group">
+        <label>Destinatário</label>
+        <input type="email" id="emailTo" placeholder="email@destinatario.com.br">
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:0.75rem;">Cópia automática para: <strong>controladoria@iguacumaquinas.com.br</strong></div>
+    <div class="form-group" style="margin-bottom:1rem;">
+      <label>Filtrar tópicos a incluir</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;cursor:pointer;"><input type="checkbox" id="efAll" checked onchange="emailFilterAll(this)"> Todos</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;cursor:pointer;"><input type="checkbox" id="efAlto" onchange="updateEmailPreview()"> Impacto Alto</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;cursor:pointer;"><input type="checkbox" id="efPend" onchange="updateEmailPreview()"> Pendentes</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;cursor:pointer;"><input type="checkbox" id="efInc" onchange="updateEmailPreview()"> Em andamento</label>
+      </div>
+    </div>
+    <div id="emailPreviewCount" style="font-size:12px;color:var(--text2);margin-bottom:1rem;"></div>
+    <div class="btn-row">
+      <button class="btn primary" onclick="sendEmail()"><i class="ti ti-send"></i> Abrir no Outlook / Gmail</button>
+      <button class="btn" onclick="closeEmailModal()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -354,14 +387,22 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
 <script>
 const SUPABASE_URL='https://rorriqsetffygtmybnuv.supabase.co';
 const SUPABASE_KEY='sb_publishable_BQ7D9YBAK0mt4dHLUMeTRg_uOanaKOC';
-const PASS_EDIT='IG1958';
-const PASS_VIEW='IG2026';
+const CC_EMAIL='controladoria@iguacumaquinas.com.br';
+
+// Senhas: edit = controladoria vê tudo; view por área = só vê reuniões do setor
+const PASSWORDS={
+  'IG1958':{role:'edit', dept:null, label:'Controladoria · Edição'},
+  'IG2026':{role:'view', dept:null, label:'Visualização Geral'},
+};
+// Para adicionar senha por área: 'SENHA':{role:'view', dept:'Nome do Departamento', label:'Área · Visualização'}
+// Exemplo: 'COMERCIAL26':{role:'view', dept:'Comercial', label:'Comercial · Visualização'}
+
 let sb=null;
 try{ sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY); }catch(e){}
 
 let db={meetings:[],points:[]};
 let editMtgId=null,editPtId=null,openMtgId=null,activePtMtgId=null;
-let userRole=null;
+let userRole=null, userDept=null, userLabel=null;
 
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
 function fmtPeriod(p){if(!p)return'';const[y,m]=p.split('-');const mo=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];return mo[+m-1]+'/'+y;}
@@ -371,24 +412,32 @@ function stC(s){return s==='Concluído'?'concluido':s==='Iniciado'?'iniciado':s=
 
 // ---- LOGIN ----
 function doLogin(){
-  const v=document.getElementById('loginPass').value;
-  if(v===PASS_EDIT) userRole='edit';
-  else if(v===PASS_VIEW) userRole='view';
-  else{ document.getElementById('loginError').style.display='block'; return; }
+  const v=document.getElementById('loginPass').value.trim();
+  const found=PASSWORDS[v];
+  if(!found){ document.getElementById('loginError').style.display='block'; return; }
+  userRole=found.role; userDept=found.dept; userLabel=found.label;
   sessionStorage.setItem('iguacu_role',userRole);
+  sessionStorage.setItem('iguacu_dept',userDept||'');
+  sessionStorage.setItem('iguacu_label',userLabel);
   enterApp();
 }
-function doLogout(){ sessionStorage.removeItem('iguacu_role'); location.reload(); }
+function doLogout(){ sessionStorage.clear(); location.reload(); }
 function enterApp(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appRoot').style.display='block';
   document.body.classList.toggle('role-view', userRole==='view');
-  document.getElementById('roleBadge').textContent = userRole==='edit' ? 'Controladoria · Edição' : 'Visualização';
+  document.getElementById('roleBadge').textContent = userLabel||'Visualização';
   load();
 }
 (function checkSession(){
   const r=sessionStorage.getItem('iguacu_role');
-  if(r==='edit'||r==='view'){ userRole=r; enterApp(); }
+  if(r==='edit'||r==='view'){
+    userRole=r;
+    userDept=sessionStorage.getItem('iguacu_dept')||null;
+    userLabel=sessionStorage.getItem('iguacu_label')||'';
+    if(userDept==='') userDept=null;
+    enterApp();
+  }
 })();
 
 // ---- DATA: SUPABASE ----
@@ -408,6 +457,12 @@ async function load(){
     if(e1||e2) throw e1||e2;
     db.meetings=(meetings||[]).map(m=>({id:m.id,period:m.period,dept:m.dept,cc:m.cc,obs:m.obs,createdAt:m.created_at}));
     db.points=(points||[]).map(p=>({id:p.id,meetingId:p.meeting_id,topic:p.topic,desc:p.description,impact:p.impact,cause:p.cause,action:p.action,resp:p.resp,email:p.email,prazo:p.prazo,status:p.status,createdAt:p.created_at,updatedAt:p.updated_at}));
+    // Filter by dept if area user
+    if(userDept){
+      const allowed=new Set(db.meetings.filter(m=>m.dept===userDept).map(m=>m.id));
+      db.meetings=db.meetings.filter(m=>allowed.has(m.id));
+      db.points=db.points.filter(p=>allowed.has(p.meetingId));
+    }
     setSync(true);
     renderAll();
     subscribeRealtime();
@@ -479,7 +534,7 @@ function renderVencendo(){
     const d=new Date(p.prazo+'T12:00:00');return d<=in7;
   }).sort((a,b)=>a.prazo.localeCompare(b.prazo));
   const el=document.getElementById('vencendo');
-  if(!pts.length){el.innerHTML='<div class="empty"><i class="ti ti-circle-check"></i><p>Nenhum ponto crítico nos próximos 7 dias.</p></div>';return;}
+  if(!pts.length){el.innerHTML='<div class="empty"><i class="ti ti-circle-check"></i><p>Nenhum tópico crítico nos próximos 7 dias.</p></div>';return;}
   el.innerHTML=pts.map(p=>{
     const m=db.meetings.find(m=>m.id===p.meetingId);
     const over=new Date(p.prazo+'T12:00:00')<today;
@@ -520,6 +575,7 @@ function renderMeetings(){
             ${co?`<span class="badge concluido">${co} conc.</span>`:''}
           </div>
           <div style="display:flex;gap:5px;" onclick="event.stopPropagation()">
+            <button class="btn sm" onclick="openEmailModal('${m.id}')" title="Enviar por e-mail"><i class="ti ti-mail"></i></button>
             <button class="btn sm no-view" onclick="openEditMtg('${m.id}')"><i class="ti ti-edit"></i></button>
             <button class="btn sm danger no-view" onclick="delMtg('${m.id}')"><i class="ti ti-trash"></i></button>
           </div>
@@ -528,7 +584,7 @@ function renderMeetings(){
       ${isOpen?`
       <hr class="div">
       <div class="btn-row" style="margin-bottom:0.875rem;" onclick="event.stopPropagation()">
-        <button class="btn sm primary no-view" onclick="openPtModal('${m.id}')"><i class="ti ti-plus"></i> Novo ponto</button>
+        <button class="btn sm primary no-view" onclick="openPtModal('${m.id}')"><i class="ti ti-plus"></i> Novo tópico</button>
       </div>
       <div class="tbl-wrap" onclick="event.stopPropagation()">
         <table class="tbl">
@@ -547,7 +603,7 @@ function renderMeetings(){
 
 function ptRows(mid){
   const pts=db.points.filter(p=>p.meetingId===mid);
-  if(!pts.length)return`<tr><td colspan="9" style="text-align:center;padding:1.5rem;color:var(--text2);">Nenhum ponto registrado.</td></tr>`;
+  if(!pts.length)return`<tr><td colspan="9" style="text-align:center;padding:1.5rem;color:var(--text2);">Nenhum tópico registrado.</td></tr>`;
   return pts.map(p=>`<tr>
     <td style="font-weight:600;">${p.topic}</td>
     <td style="color:var(--text2);font-size:12px;">${p.desc}</td>
@@ -580,7 +636,7 @@ function renderPoints(){
   if(st)pts=pts.filter(p=>p.status===st);
   if(im)pts=pts.filter(p=>p.impact===im);
   const body=document.getElementById('pointsBody');
-  if(!pts.length){body.innerHTML=`<tr><td colspan="9"><div class="empty"><i class="ti ti-search-off"></i><p>Nenhum ponto encontrado.</p></div></td></tr>`;return;}
+  if(!pts.length){body.innerHTML=`<tr><td colspan="9"><div class="empty"><i class="ti ti-search-off"></i><p>Nenhum tópico encontrado.</p></div></td></tr>`;return;}
   body.innerHTML=pts.map(p=>{
     const m=db.meetings.find(m=>m.id===p.meetingId);
     return`<tr>
@@ -647,8 +703,8 @@ function delMtg(id){
   deleteMeetingRemote(id);
 }
 
-function openPtModal(mid){editPtId=null;activePtMtgId=mid;document.getElementById('ptModalTitle').textContent='Novo ponto';['pTopic','pDesc','pCause','pResp','pEmail','pPrazo'].forEach(id=>document.getElementById(id).value='');document.getElementById('pImpact').value='Médio';document.getElementById('pStatus').value='Pendente';document.getElementById('ptOverlay').classList.add('open');}
-function openEditPt(id){const p=db.points.find(p=>p.id===id);if(!p)return;editPtId=id;activePtMtgId=p.meetingId;document.getElementById('ptModalTitle').textContent='Editar ponto';document.getElementById('pTopic').value=p.topic||'';document.getElementById('pDesc').value=p.desc||'';document.getElementById('pImpact').value=p.impact||'Médio';document.getElementById('pCause').value=p.cause||'';document.getElementById('pAction').value=p.action||'';document.getElementById('pResp').value=p.resp||'';document.getElementById('pEmail').value=p.email||'';document.getElementById('pPrazo').value=p.prazo||'';document.getElementById('pStatus').value=p.status||'Pendente';document.getElementById('ptOverlay').classList.add('open');}
+function openPtModal(mid){editPtId=null;activePtMtgId=mid;document.getElementById('ptModalTitle').textContent='Novo tópico';['pTopic','pDesc','pCause','pResp','pEmail','pPrazo'].forEach(id=>document.getElementById(id).value='');document.getElementById('pImpact').value='Médio';document.getElementById('pStatus').value='Pendente';document.getElementById('ptOverlay').classList.add('open');}
+function openEditPt(id){const p=db.points.find(p=>p.id===id);if(!p)return;editPtId=id;activePtMtgId=p.meetingId;document.getElementById('ptModalTitle').textContent='Editar tópico';document.getElementById('pTopic').value=p.topic||'';document.getElementById('pDesc').value=p.desc||'';document.getElementById('pImpact').value=p.impact||'Médio';document.getElementById('pCause').value=p.cause||'';document.getElementById('pAction').value=p.action||'';document.getElementById('pResp').value=p.resp||'';document.getElementById('pEmail').value=p.email||'';document.getElementById('pPrazo').value=p.prazo||'';document.getElementById('pStatus').value=p.status||'Pendente';document.getElementById('ptOverlay').classList.add('open');}
 function closePtModal(){document.getElementById('ptOverlay').classList.remove('open');}
 
 function savePt(){
@@ -750,7 +806,7 @@ function buildReport(){
         <div style="font-size:12px;color:var(--text2);">pontos registrados</div>
       </div>
     </div>
-    ${rows||'<div class="empty"><p>Nenhum ponto encontrado com os filtros aplicados.</p></div>'}
+    ${rows||'<div class="empty"><p>Nenhum tópico encontrado com os filtros aplicados.</p></div>'}
   </div>`;
 }
 
@@ -787,7 +843,77 @@ function exportCSV(){
   a.download='fechamento_orcamentario_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
 }
 
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMtgModal();closePtModal();}});
+// ---- EMAIL ----
+let emailMtgId=null;
+function openEmailModal(mid){
+  emailMtgId=mid;
+  const m=db.meetings.find(m=>m.id===mid);
+  if(!m)return;
+  document.getElementById('emailMtgInfo').innerHTML=`<strong>${m.dept}</strong> · ${fmtPeriod(m.period)} · CC: ${m.cc||'—'}`;
+  document.getElementById('emailTo').value='';
+  document.getElementById('efAll').checked=true;
+  document.getElementById('efAlto').checked=false;
+  document.getElementById('efPend').checked=false;
+  document.getElementById('efInc').checked=false;
+  updateEmailPreview();
+  document.getElementById('emailOverlay').classList.add('open');
+}
+function closeEmailModal(){document.getElementById('emailOverlay').classList.remove('open');}
+
+function emailFilterAll(el){
+  if(el.checked){
+    ['efAlto','efPend','efInc'].forEach(id=>document.getElementById(id).checked=false);
+  }
+  updateEmailPreview();
+}
+function updateEmailPreview(){
+  const pts=getFilteredEmailPts();
+  document.getElementById('emailPreviewCount').textContent=`${pts.length} tópico(s) serão incluídos no e-mail.`;
+}
+function getFilteredEmailPts(){
+  let pts=db.points.filter(p=>p.meetingId===emailMtgId);
+  const all=document.getElementById('efAll').checked;
+  if(!all){
+    const alto=document.getElementById('efAlto').checked;
+    const pend=document.getElementById('efPend').checked;
+    const inc=document.getElementById('efInc').checked;
+    pts=pts.filter(p=>{
+      if(alto&&p.impact==='Alto') return true;
+      if(pend&&p.status==='Pendente') return true;
+      if(inc&&p.status==='Iniciado') return true;
+      return false;
+    });
+  }
+  return pts;
+}
+function sendEmail(){
+  const m=db.meetings.find(m=>m.id===emailMtgId);
+  if(!m)return;
+  const to=document.getElementById('emailTo').value.trim();
+  if(!to){alert('Informe o e-mail do destinatário.');return;}
+  const pts=getFilteredEmailPts();
+  if(!pts.length){alert('Nenhum tópico selecionado com os filtros aplicados.');return;}
+  const subject=`Fechamento Orçamentário – ${m.dept} – ${fmtPeriod(m.period)}`;
+  let body=`Prezado(a),\n\nSegue o relatório de fechamento orçamentário da área ${m.dept} referente ao período ${fmtPeriod(m.period)}.\n\n`;
+  body+=`${'─'.repeat(60)}\n`;
+  pts.forEach((p,i)=>{
+    body+=`\n${i+1}. ${p.topic}\n`;
+    body+=`   Impacto: ${p.impact} | Status: ${p.status}\n`;
+    body+=`   Descrição: ${p.desc||'—'}\n`;
+    body+=`   Causa raiz: ${p.cause||'—'}\n`;
+    body+=`   Plano de ação: ${p.action||'—'}\n`;
+    body+=`   Responsável: ${p.resp||'—'} (${p.email||'—'})\n`;
+    body+=`   Prazo: ${fmtDate(p.prazo)||'—'}\n`;
+  });
+  body+=`\n${'─'.repeat(60)}\n`;
+  body+=`\nEste relatório foi gerado pelo sistema de Fechamento Orçamentário da Iguaçu Máquinas.\nControladoria Corporativa`;
+  const cc=CC_EMAIL;
+  const mailto=`mailto:${encodeURIComponent(to)}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href=mailto;
+  closeEmailModal();
+}
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMtgModal();closePtModal();closeEmailModal();}});
 </script>
 </body>
 </html>
