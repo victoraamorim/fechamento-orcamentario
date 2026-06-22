@@ -227,6 +227,7 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
   <div class="tab" onclick="tab('reunioes')"><i class="ti ti-calendar-event"></i> Reuniões</div>
   <div class="tab" onclick="tab('pontos')"><i class="ti ti-list-check"></i> Pontos</div>
   <div class="tab" onclick="tab('relatorios')"><i class="ti ti-file-text"></i> Relatórios</div>
+  <div class="tab no-view" onclick="tab('usuarios')"><i class="ti ti-users"></i> Usuários</div>
 </div>
 
 <!-- PAINEL -->
@@ -299,6 +300,26 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
     </div>
   </div>
   <div id="reportOut"></div>
+</div>
+
+<!-- USUÁRIOS -->
+<div id="sec-usuarios" class="section">
+  <div class="sec-header">
+    <div class="sec-title"><i class="ti ti-users"></i> Gestão de usuários</div>
+    <button class="btn primary" onclick="openUserModal()"><i class="ti ti-plus"></i> Novo usuário</button>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr>
+        <th style="width:20%">Senha / Login</th>
+        <th style="width:25%">Nome / Rótulo</th>
+        <th style="width:20%">Departamento</th>
+        <th style="width:15%">Perfil</th>
+        <th style="width:20%"></th>
+      </tr></thead>
+      <tbody id="usersBody"></tbody>
+    </table>
+  </div>
 </div>
 
 </div><!-- /app -->
@@ -384,6 +405,30 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
   </div>
 </div>
 
+<!-- MODAL USUÁRIO -->
+<div class="overlay no-print" id="userOverlay">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-title">
+      <span id="userModalTitle">Novo usuário</span>
+      <button class="btn sm" onclick="closeUserModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="form-row cols-1">
+      <div class="form-group"><label>Nome / Rótulo (ex: Comercial · Visualização)</label><input type="text" id="uLabel" placeholder="Como aparece no sistema"></div>
+    </div>
+    <div class="form-row cols-2">
+      <div class="form-group"><label>Senha de acesso</label><input type="text" id="uPass" placeholder="Ex: COMERCIAL26"></div>
+      <div class="form-group"><label>Perfil</label><select id="uRole"><option value="view">Visualização</option><option value="edit">Edição (Controladoria)</option></select></div>
+    </div>
+    <div class="form-row cols-1">
+      <div class="form-group"><label>Departamento (deixe vazio para ver tudo)</label><input type="text" id="uDept" placeholder="Ex: Comercial, Peças, Serviços..."></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary" onclick="saveUser()">Salvar usuário</button>
+      <button class="btn" onclick="closeUserModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL='https://rorriqsetffygtmybnuv.supabase.co';
 const SUPABASE_KEY='sb_publishable_BQ7D9YBAK0mt4dHLUMeTRg_uOanaKOC';
@@ -428,6 +473,7 @@ function enterApp(){
   document.body.classList.toggle('role-view', userRole==='view');
   document.getElementById('roleBadge').textContent = userLabel||'Visualização';
   load();
+  if(userRole==='edit'){ loadUsers(); rebuildPasswords(); }
 }
 (function checkSession(){
   const r=sessionStorage.getItem('iguacu_role');
@@ -814,8 +860,93 @@ function tab(name){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('sec-'+name).classList.add('active');
-  const idx={dashboard:0,reunioes:1,pontos:2,relatorios:3}[name];
+  const idx={dashboard:0,reunioes:1,pontos:2,relatorios:3,usuarios:4}[name];
   document.querySelectorAll('.tab')[idx].classList.add('active');
+  if(name==='usuarios') renderUsers();
+}
+
+// ---- USUÁRIOS (Supabase table: users) ----
+let editUserId=null;
+let usersCache=[];
+
+async function loadUsers(){
+  if(!sb) return;
+  const{data,error}=await sb.from('users').select('*').order('created_at');
+  if(!error) usersCache=data||[];
+  renderUsers();
+}
+
+function renderUsers(){
+  const body=document.getElementById('usersBody');
+  if(!body) return;
+  if(!usersCache.length){body.innerHTML=`<tr><td colspan="5"><div class="empty"><i class="ti ti-users-off"></i><p>Nenhum usuário cadastrado além dos padrões do sistema.</p></div></td></tr>`;return;}
+  body.innerHTML=usersCache.map(u=>`<tr>
+    <td style="font-weight:600;font-family:monospace;">${u.pass}</td>
+    <td>${u.label}</td>
+    <td style="color:var(--text2);">${u.dept||'Todos'}</td>
+    <td><span class="badge ${u.role==='edit'?'iniciado':'pendente'}">${u.role==='edit'?'Edição':'Visualização'}</span></td>
+    <td style="display:flex;gap:4px;">
+      <button class="btn sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit"></i></button>
+      <button class="btn sm danger" onclick="deleteUser('${u.id}')"><i class="ti ti-trash"></i></button>
+    </td>
+  </tr>`).join('');
+}
+
+function openUserModal(){
+  editUserId=null;
+  document.getElementById('userModalTitle').textContent='Novo usuário';
+  document.getElementById('uLabel').value='';
+  document.getElementById('uPass').value='';
+  document.getElementById('uRole').value='view';
+  document.getElementById('uDept').value='';
+  document.getElementById('userOverlay').classList.add('open');
+}
+function openEditUser(id){
+  const u=usersCache.find(u=>u.id===id);if(!u)return;
+  editUserId=id;
+  document.getElementById('userModalTitle').textContent='Editar usuário';
+  document.getElementById('uLabel').value=u.label||'';
+  document.getElementById('uPass').value=u.pass||'';
+  document.getElementById('uRole').value=u.role||'view';
+  document.getElementById('uDept').value=u.dept||'';
+  document.getElementById('userOverlay').classList.add('open');
+}
+function closeUserModal(){document.getElementById('userOverlay').classList.remove('open');}
+
+async function saveUser(){
+  const label=document.getElementById('uLabel').value.trim();
+  const pass=document.getElementById('uPass').value.trim();
+  const role=document.getElementById('uRole').value;
+  const dept=document.getElementById('uDept').value.trim()||null;
+  if(!label||!pass){alert('Preencha nome e senha.');return;}
+  if(!sb){alert('Sem conexão com o banco.');return;}
+  const data={label,pass,role,dept};
+  let error;
+  if(editUserId){
+    ({error}=await sb.from('users').update(data).eq('id',editUserId));
+  } else {
+    ({error}=await sb.from('users').insert({...data,created_at:new Date().toISOString()}));
+  }
+  if(error){alert('Erro ao salvar: '+error.message);return;}
+  closeUserModal();
+  await loadUsers();
+  // Rebuild dynamic PASSWORDS from DB
+  await rebuildPasswords();
+}
+
+async function deleteUser(id){
+  if(!confirm('Excluir este usuário?'))return;
+  if(!sb)return;
+  await sb.from('users').delete().eq('id',id);
+  await loadUsers();
+  await rebuildPasswords();
+}
+
+async function rebuildPasswords(){
+  if(!sb)return;
+  const{data}=await sb.from('users').select('*');
+  if(!data)return;
+  data.forEach(u=>{PASSWORDS[u.pass]={role:u.role,dept:u.dept||null,label:u.label};});
 }
 
 function exportJSON(){
@@ -913,7 +1044,7 @@ function sendEmail(){
   closeEmailModal();
 }
 
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMtgModal();closePtModal();closeEmailModal();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMtgModal();closePtModal();closeEmailModal();closeUserModal();}});
 </script>
 </body>
 </html>
