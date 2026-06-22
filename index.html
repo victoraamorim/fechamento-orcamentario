@@ -228,6 +228,7 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
   <div class="tab" onclick="tab('pontos')"><i class="ti ti-list-check"></i> Pontos</div>
   <div class="tab" onclick="tab('relatorios')"><i class="ti ti-file-text"></i> Relatórios</div>
   <div class="tab no-view" onclick="tab('usuarios')"><i class="ti ti-users"></i> Usuários</div>
+  <div class="tab no-view" onclick="tab('centros')"><i class="ti ti-building"></i> Centros de Custo</div>
 </div>
 
 <!-- PAINEL -->
@@ -322,7 +323,54 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
   </div>
 </div>
 
+<!-- CENTROS DE CUSTO -->
+<div id="sec-centros" class="section">
+  <div class="sec-header">
+    <div class="sec-title"><i class="ti ti-building"></i> Centros de custo</div>
+    <button class="btn primary" onclick="openCCModal()"><i class="ti ti-plus"></i> Novo centro de custo</button>
+  </div>
+  <div class="filter-bar no-print">
+    <select id="ccFilterDept" onchange="renderCCs()"><option value="">Todos os departamentos</option></select>
+    <select id="ccFilterStatus" onchange="renderCCs()">
+      <option value="">Todos</option><option value="true">Ativos</option><option value="false">Bloqueados</option>
+    </select>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr>
+        <th style="width:10%">Código</th>
+        <th style="width:40%">Descrição</th>
+        <th style="width:15%">Departamento</th>
+        <th style="width:10%">Status</th>
+        <th style="width:25%"></th>
+      </tr></thead>
+      <tbody id="ccBody"></tbody>
+    </table>
+  </div>
+</div>
+
 </div><!-- /app -->
+
+<!-- MODAL CENTRO DE CUSTO -->
+<div class="overlay no-print" id="ccOverlay">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-title">
+      <span id="ccModalTitle">Novo centro de custo</span>
+      <button class="btn sm" onclick="closeCCModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="form-row cols-2">
+      <div class="form-group"><label>Código</label><input type="text" id="ccCode" placeholder="Ex: 220"></div>
+      <div class="form-group"><label>Departamento</label><input type="text" id="ccDept" placeholder="Ex: MÁQUINAS"></div>
+    </div>
+    <div class="form-row cols-1">
+      <div class="form-group"><label>Descrição</label><input type="text" id="ccDesc" placeholder="Ex: VENDAS"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary" onclick="saveCC()">Salvar</button>
+      <button class="btn" onclick="closeCCModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL REUNIÃO -->
 <div class="overlay no-print" id="mtgOverlay">
@@ -330,8 +378,8 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
     <div class="modal-title"><span id="mtgModalTitle">Nova reunião</span><button class="btn sm" onclick="closeMtgModal()"><i class="ti ti-x"></i></button></div>
     <div class="form-row cols-3">
       <div class="form-group"><label>Período</label><input type="month" id="mPeriod"></div>
-      <div class="form-group"><label>Departamento / Área</label><input type="text" id="mDept" placeholder="Ex: Comercial, Peças..."></div>
-      <div class="form-group"><label>Centro de custo</label><input type="text" id="mCC" placeholder="Ex: CC-010"></div>
+      <div class="form-group"><label>Departamento / Área</label><select id="mDept"><option value="">Selecione...</option></select></div>
+      <div class="form-group"><label>Centro de custo</label><select id="mCC"><option value="">Selecione...</option></select></div>
     </div>
     <div class="form-row cols-1">
       <div class="form-group"><label>Observações</label><textarea id="mObs" placeholder="Participantes, contexto, observações gerais..."></textarea></div>
@@ -474,6 +522,7 @@ function enterApp(){
   document.getElementById('roleBadge').textContent = userLabel||'Visualização';
   load();
   if(userRole==='edit'){ loadUsers(); rebuildPasswords(); }
+  loadCCs();
 }
 (function checkSession(){
   const r=sessionStorage.getItem('iguacu_role');
@@ -725,8 +774,23 @@ function syncFilters(){
 
 function toggleMtg(id){openMtgId=openMtgId===id?null:id;renderMeetings();}
 
-function openMtgModal(){editMtgId=null;document.getElementById('mtgModalTitle').textContent='Nova reunião';['mPeriod','mDept','mCC','mObs'].forEach(id=>document.getElementById(id).value='');document.getElementById('mtgOverlay').classList.add('open');}
-function openEditMtg(id){const m=db.meetings.find(m=>m.id===id);if(!m)return;editMtgId=id;document.getElementById('mtgModalTitle').textContent='Editar reunião';document.getElementById('mPeriod').value=m.period||'';document.getElementById('mDept').value=m.dept||'';document.getElementById('mCC').value=m.cc||'';document.getElementById('mObs').value=m.obs||'';document.getElementById('mtgOverlay').classList.add('open');}
+function openMtgModal(){editMtgId=null;document.getElementById('mtgModalTitle').textContent='Nova reunião';document.getElementById('mPeriod').value='';document.getElementById('mObs').value='';populateMtgSelects();document.getElementById('mtgOverlay').classList.add('open');}
+function openEditMtg(id){const m=db.meetings.find(m=>m.id===id);if(!m)return;editMtgId=id;document.getElementById('mtgModalTitle').textContent='Editar reunião';document.getElementById('mPeriod').value=m.period||'';document.getElementById('mObs').value=m.obs||'';populateMtgSelects(m.dept,m.cc);document.getElementById('mtgOverlay').classList.add('open');}
+
+function populateMtgSelects(selDept, selCC){
+  const active=ccCache.filter(c=>c.active);
+  const depts=[...new Set(active.map(c=>c.dept))].sort();
+  const dEl=document.getElementById('mDept');
+  dEl.innerHTML='<option value="">Selecione...</option>'+depts.map(d=>`<option ${d===selDept?'selected':''}>${d}</option>`).join('');
+  dEl.onchange=()=>populateCCSelect(dEl.value, selCC);
+  populateCCSelect(selDept||'', selCC);
+}
+
+function populateCCSelect(dept, selCC){
+  const cEl=document.getElementById('mCC');
+  const active=ccCache.filter(c=>c.active&&(!dept||c.dept===dept));
+  cEl.innerHTML='<option value="">Selecione...</option>'+active.map(c=>`<option value="${c.code} - ${c.description}" ${(c.code+' - '+c.description)===selCC?'selected':''}>${c.code} – ${c.description}</option>`).join('');
+}
 function closeMtgModal(){document.getElementById('mtgOverlay').classList.remove('open');}
 
 function saveMtg(){
@@ -860,12 +924,175 @@ function tab(name){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('sec-'+name).classList.add('active');
-  const idx={dashboard:0,reunioes:1,pontos:2,relatorios:3,usuarios:4}[name];
+  const idx={dashboard:0,reunioes:1,pontos:2,relatorios:3,usuarios:4,centros:5}[name];
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if(name==='usuarios') renderUsers();
+  if(name==='centros'){ renderCCs(); syncCCDeptFilter(); }
 }
 
-// ---- USUÁRIOS (Supabase table: users) ----
+// ---- CENTROS DE CUSTO ----
+let ccCache=[];
+let editCCId=null;
+
+const CC_PRELOAD=[
+  {code:'110',description:'DIRETORIA',dept:'ADM'},
+  {code:'120',description:'ADMINISTRATIVO GERAL - CA',dept:'ADM'},
+  {code:'130',description:'AERONAVE',dept:'ADM'},
+  {code:'140',description:'JURIDICO',dept:'ADM'},
+  {code:'150',description:'GOVERNANCA',dept:'ADM'},
+  {code:'210',description:'MARKETING',dept:'ADM'},
+  {code:'121',description:'HERITAGE',dept:'ADM'},
+  {code:'220',description:'VENDAS',dept:'MÁQUINAS'},
+  {code:'230',description:'PECAS',dept:'PEÇAS'},
+  {code:'231',description:'PNEUS AGRICOLAS',dept:'PEÇAS'},
+  {code:'232',description:'GOODSPRAY E CLEANER TIS',dept:'PEÇAS'},
+  {code:'240',description:'SERVICOS',dept:'SERVIÇOS'},
+  {code:'250',description:'CENTRO DE SUPORTE E SOLUCOES TECNOLOGICAS',dept:'CSC'},
+  {code:'251',description:'VENDAS - USADOS',dept:'SEMINOVOS'},
+  {code:'252',description:'TREINAMENTOS',dept:'TREINAMENTO'},
+  {code:'260',description:'VENDAS WIRTGEN',dept:'MÁQUINAS'},
+  {code:'270',description:'PECAS WIRTGEN',dept:'PEÇAS'},
+  {code:'280',description:'POS VENDAS LOJA',dept:'PEÇAS'},
+  {code:'290',description:'CSC WIRTGEN',dept:'CSC'},
+  {code:'301',description:'CONTROLADORIA',dept:'ADM'},
+  {code:'310',description:'CONTABILIDADE',dept:'ADM'},
+  {code:'320',description:'FISCAL',dept:'ADM'},
+  {code:'330',description:'SUPRIMENTOS',dept:'ADM'},
+  {code:'331',description:'LOGISTICA',dept:'ADM'},
+  {code:'340',description:'RECURSOS HUMANOS',dept:'ADM'},
+  {code:'341',description:'DEPARTAMENTO PESSOAL',dept:'ADM'},
+  {code:'350',description:'TECNOLOGIA DA INFORMACAO',dept:'ADM'},
+  {code:'351',description:'ESTRATEGIA E INOVACAO',dept:'ADM'},
+  {code:'360',description:'FINANCEIRO',dept:'ADM'},
+  {code:'370',description:'CONTAS ESTRATEGICAS',dept:'MÁQUINAS'},
+  {code:'380',description:'PROCESSOS DE FINANCIAMENTOS',dept:'MÁQUINAS'},
+  {code:'390',description:'AUDITORIA',dept:'ADM'},
+  {code:'391',description:'ESG - AMBIENTAL, SOCIAL E GOVERNANCA',dept:'ADM'},
+  {code:'410',description:'ADMINISTRATIVO - LOJA',dept:'ADM'},
+  {code:'411',description:'FINANCEIRO - LOJA',dept:'ADM'},
+  {code:'510',description:'VENDAS - LOJA',dept:'MÁQUINAS'},
+  {code:'511',description:'VENDAS - USADOS JOHN DEERE',dept:'SEMINOVOS'},
+  {code:'512',description:'VENDAS - USADOS OUTRAS MARCAS',dept:'SEMINOVOS'},
+  {code:'513',description:'LOGISTICA',dept:'MÁQUINAS'},
+  {code:'514',description:'SEMINOVOS REGIONAL MT',dept:'SEMINOVOS'},
+  {code:'517',description:'AGRICULTURA DE PRECISAO - PACOTES - VEND',dept:'CSC'},
+  {code:'518',description:'RATEIO GERENCIAL - ADMINISTRATIVO LOJA',dept:'MÁQUINAS'},
+  {code:'519',description:'RATEIO GERENCIAL - CENTRO ADMINISTRATIVO',dept:'MÁQUINAS'},
+  {code:'520',description:'PECAS - LOJA',dept:'PEÇAS'},
+  {code:'521',description:'PNEUS AGRICOLAS',dept:'PEÇAS'},
+  {code:'522',description:'PNEUS RODOVIARIO - MICHELIN',dept:'PEÇAS'},
+  {code:'523',description:'PNEUS OUTRAS MARCAS',dept:'PEÇAS'},
+  {code:'524',description:'GOODSPRAY E CLEANER TIS',dept:'PEÇAS'},
+  {code:'525',description:'PNEUS DE PASSEIO',dept:'PEÇAS'},
+  {code:'527',description:'PRECISION UPGRADE',dept:'PEÇAS'},
+  {code:'528',description:'RATEIO GERENCIAL - ADMINISTRATIVO LOJA',dept:'PEÇAS'},
+  {code:'529',description:'RATEIO GERENCIAL - CENTRO ADMINISTRATIVO',dept:'PEÇAS'},
+  {code:'530',description:'SERVICOS - LOJA',dept:'SERVIÇOS'},
+  {code:'531',description:'SERVICOS LOJA - ADMINISTRATIVO',dept:'SERVIÇOS'},
+  {code:'532',description:'SUPORTE CONECTADO',dept:'CSC'},
+  {code:'537',description:'AGRICULTURA DE PRECISAO',dept:'CSC'},
+  {code:'538',description:'RATEIO GERENCIAL - ADMINISTRATIVO LOJA',dept:'SERVIÇOS'},
+  {code:'539',description:'RATEIO GERENCIAL - CENTRO ADMINISTRATIVO',dept:'SERVIÇOS'},
+  {code:'552',description:'VENDAS TREINAMENTOS',dept:'TREINAMENTO'},
+  {code:'560',description:'VENDAS WIRTGEN',dept:'MÁQUINAS'},
+  {code:'570',description:'PECAS WIRTGEN',dept:'PEÇAS'},
+  {code:'580',description:'SERVICOS WIRTGEN',dept:'SERVIÇOS'},
+  {code:'590',description:'CSC WIRTGEN',dept:'CSC'},
+];
+
+async function loadCCs(){
+  if(!sb){ccCache=CC_PRELOAD.map((c,i)=>({...c,id:i,active:true}));populateMtgSelects();return;}
+  const{data,error}=await sb.from('cost_centers').select('*').order('code');
+  if(error||!data||!data.length){
+    // First time: seed the database
+    await seedCCs();
+    return loadCCs();
+  }
+  ccCache=data;
+  populateMtgSelects();
+  syncCCDeptFilter();
+}
+
+async function seedCCs(){
+  if(!sb)return;
+  const rows=CC_PRELOAD.map(c=>({...c,active:true}));
+  await sb.from('cost_centers').insert(rows);
+}
+
+function renderCCs(){
+  const body=document.getElementById('ccBody');if(!body)return;
+  const dept=document.getElementById('ccFilterDept')?.value||'';
+  const status=document.getElementById('ccFilterStatus')?.value||'';
+  let list=[...ccCache];
+  if(dept)list=list.filter(c=>c.dept===dept);
+  if(status!=='')list=list.filter(c=>String(c.active)===status);
+  if(!list.length){body.innerHTML=`<tr><td colspan="5"><div class="empty"><p>Nenhum centro de custo encontrado.</p></div></td></tr>`;return;}
+  body.innerHTML=list.map(c=>`<tr style="opacity:${c.active?1:0.5}">
+    <td style="font-weight:600;font-family:monospace;">${c.code}</td>
+    <td>${c.description}</td>
+    <td style="color:var(--text2);">${c.dept}</td>
+    <td><span class="badge ${c.active?'concluido':'pendente'}">${c.active?'Ativo':'Bloqueado'}</span></td>
+    <td style="display:flex;gap:4px;">
+      <button class="btn sm" onclick="openEditCC('${c.id}')"><i class="ti ti-edit"></i></button>
+      ${c.active
+        ?`<button class="btn sm danger" onclick="toggleCC('${c.id}',false)"><i class="ti ti-lock"></i> Bloquear</button>`
+        :`<button class="btn sm" onclick="toggleCC('${c.id}',true)"><i class="ti ti-lock-open"></i> Reativar</button>
+         <button class="btn sm danger" onclick="deleteCC('${c.id}')"><i class="ti ti-trash"></i></button>`
+      }
+    </td>
+  </tr>`).join('');
+}
+
+function syncCCDeptFilter(){
+  const el=document.getElementById('ccFilterDept');if(!el)return;
+  const depts=[...new Set(ccCache.map(c=>c.dept))].sort();
+  const cur=el.value;
+  el.innerHTML='<option value="">Todos os departamentos</option>'+depts.map(d=>`<option ${d===cur?'selected':''}>${d}</option>`).join('');
+}
+
+function openCCModal(){editCCId=null;document.getElementById('ccModalTitle').textContent='Novo centro de custo';['ccCode','ccDesc','ccDept'].forEach(id=>document.getElementById(id).value='');document.getElementById('ccOverlay').classList.add('open');}
+function openEditCC(id){const c=ccCache.find(c=>String(c.id)===String(id));if(!c)return;editCCId=id;document.getElementById('ccModalTitle').textContent='Editar centro de custo';document.getElementById('ccCode').value=c.code||'';document.getElementById('ccDesc').value=c.description||'';document.getElementById('ccDept').value=c.dept||'';document.getElementById('ccOverlay').classList.add('open');}
+function closeCCModal(){document.getElementById('ccOverlay').classList.remove('open');}
+
+async function saveCC(){
+  const code=document.getElementById('ccCode').value.trim();
+  const description=document.getElementById('ccDesc').value.trim();
+  const dept=document.getElementById('ccDept').value.trim();
+  if(!code||!description||!dept){alert('Preencha todos os campos.');return;}
+  if(!sb)return;
+  let error;
+  if(editCCId){
+    ({error}=await sb.from('cost_centers').update({code,description,dept}).eq('id',editCCId));
+  } else {
+    ({error}=await sb.from('cost_centers').insert({code,description,dept,active:true}));
+  }
+  if(error){alert('Erro: '+error.message);return;}
+  closeCCModal();await loadCCs();renderCCs();syncCCDeptFilter();
+}
+
+async function toggleCC(id,active){
+  // Validate: if blocking, check if CC has meetings
+  if(!active){
+    const cc=ccCache.find(c=>String(c.id)===String(id));
+    const inUse=db.meetings.some(m=>m.cc&&cc&&m.cc.startsWith(cc.code));
+    if(inUse){
+      if(!confirm(`Este CC possui reuniões vinculadas. Ele será bloqueado para novos registros, mas o histórico será mantido. Confirma?`))return;
+    }
+  }
+  if(!sb)return;
+  await sb.from('cost_centers').update({active}).eq('id',id);
+  await loadCCs();renderCCs();
+}
+
+async function deleteCC(id){
+  const cc=ccCache.find(c=>String(c.id)===String(id));
+  const inUse=db.meetings.some(m=>m.cc&&cc&&m.cc.startsWith(cc.code));
+  if(inUse){alert('Este CC possui reuniões vinculadas e não pode ser excluído. Use "Bloquear" para desativá-lo.');return;}
+  if(!confirm('Excluir definitivamente este centro de custo?'))return;
+  if(!sb)return;
+  await sb.from('cost_centers').delete().eq('id',id);
+  await loadCCs();renderCCs();
+}
 let editUserId=null;
 let usersCache=[];
 
@@ -1044,7 +1271,7 @@ function sendEmail(){
   closeEmailModal();
 }
 
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMtgModal();closePtModal();closeEmailModal();closeUserModal();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMtgModal();closePtModal();closeEmailModal();closeUserModal();closeCCModal();}});
 </script>
 </body>
 </html>
