@@ -157,10 +157,10 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
   .no-print{display:none!important;}
   .app{max-width:100%;padding:0;}
   .card,.meeting-card,.tbl-wrap{border:0.5px solid #ddd!important;break-inside:avoid;}
-  .tabs,.header-actions,.filter-bar,.overlay{display:none!important;}
-  .section{display:block!important;}
-  #sec-dashboard,#sec-reunioes,#sec-pontos{display:none!important;}
+  .tabs,.header-actions,.filter-bar,.overlay,.header{display:none!important;}
+  .section{display:none!important;}
   #sec-relatorios{display:block!important;}
+  #reportOut{display:block!important;}
   .modal{display:none!important;}
   .logo{background:#367C2B!important;}
   .badge.alto{background:#FCEBEB!important;color:#A32D2D!important;}
@@ -328,9 +328,13 @@ hr.div{border:none;border-top:0.5px solid var(--border);margin:1rem 0;}
   <div class="card no-print">
     <div class="sec-title" style="margin-bottom:1rem;"><i class="ti ti-filter"></i> Filtros</div>
     <div class="form-row cols-3">
-      <div class="form-group"><label>Departamento</label><select id="rDept"><option value="">Todos</option></select></div>
+      <div class="form-group"><label>Departamento</label><select id="rDept" onchange="syncReportCC()"><option value="">Todos</option></select></div>
+      <div class="form-group"><label>Centro de custo</label><select id="rCC"><option value="">Todos</option></select></div>
       <div class="form-group"><label>Período</label><select id="rPeriod"><option value="">Todos</option></select></div>
+    </div>
+    <div class="form-row cols-2">
       <div class="form-group"><label>Status</label><select id="rStatus"><option value="">Todos</option><option>Pendente</option><option>Iniciado</option><option>Justificativa</option><option>Concluído</option></select></div>
+      <div class="form-group"><label>Impacto</label><select id="rImpact"><option value="">Todos</option><option>Alto</option><option>Médio</option><option>Baixo</option></select></div>
     </div>
     <div class="btn-row" style="margin-top:8px;">
       <button class="btn primary" onclick="buildReport()"><i class="ti ti-file-analytics"></i> Gerar relatório</button>
@@ -886,7 +890,7 @@ function delMtg(id){
   deleteMeetingRemote(id);
 }
 
-function openPtModal(mid){editPtId=null;activePtMtgId=mid;document.getElementById('ptModalTitle').textContent='Novo tópico';['pTopic','pDesc','pCause','pResp','pEmail','pPrazo'].forEach(id=>document.getElementById(id).value='');document.getElementById('pImpact').value='Médio';document.getElementById('pStatus').value='Pendente';document.getElementById('ptOverlay').classList.add('open');}
+function openPtModal(mid){editPtId=null;activePtMtgId=mid;document.getElementById('ptModalTitle').textContent='Novo tópico';['pTopic','pDesc','pCause','pAction','pResp','pEmail','pPrazo'].forEach(id=>document.getElementById(id).value='');document.getElementById('pImpact').value='Médio';document.getElementById('pStatus').value='Pendente';document.getElementById('ptOverlay').classList.add('open');}
 function openEditPt(id){const p=db.points.find(p=>p.id===id);if(!p)return;editPtId=id;activePtMtgId=p.meetingId;document.getElementById('ptModalTitle').textContent='Editar tópico';document.getElementById('pTopic').value=p.topic||'';document.getElementById('pDesc').value=p.desc||'';document.getElementById('pImpact').value=p.impact||'Médio';document.getElementById('pCause').value=p.cause||'';document.getElementById('pAction').value=p.action||'';document.getElementById('pResp').value=p.resp||'';document.getElementById('pEmail').value=p.email||'';document.getElementById('pPrazo').value=p.prazo||'';document.getElementById('pStatus').value=p.status||'Pendente';document.getElementById('ptOverlay').classList.add('open');}
 function closePtModal(){document.getElementById('ptOverlay').classList.remove('open');}
 
@@ -919,13 +923,23 @@ function updStatus(id,val){
   savePointRemote(p);
 }
 
+function syncReportCC(){
+  const dept=document.getElementById('rDept').value;
+  const el=document.getElementById('rCC');
+  const ccs=[...new Set(db.meetings.filter(m=>!dept||m.dept===dept).map(m=>m.cc).filter(Boolean))].sort();
+  el.innerHTML='<option value="">Todos</option>'+ccs.map(c=>`<option>${c}</option>`).join('');
+}
+
 function buildReport(){
   const d=document.getElementById('rDept').value;
+  const cc=document.getElementById('rCC').value;
   const per=document.getElementById('rPeriod').value;
   const st=document.getElementById('rStatus').value;
+  const im=document.getElementById('rImpact').value;
   let mtgs=[...db.meetings];
-  if(d)mtgs=mtgs.filter(m=>m.dept===d);
-  if(per)mtgs=mtgs.filter(m=>m.period===per);
+  if(d) mtgs=mtgs.filter(m=>m.dept===d);
+  if(cc) mtgs=mtgs.filter(m=>m.cc===cc);
+  if(per) mtgs=mtgs.filter(m=>m.period===per);
   const now=new Date().toLocaleDateString('pt-BR');
   const el=document.getElementById('reportOut');
   if(!mtgs.length){el.innerHTML='<div class="alert info">Nenhuma reunião encontrada com os filtros selecionados.</div>';return;}
@@ -933,7 +947,8 @@ function buildReport(){
   let rows='';
   mtgs.forEach(m=>{
     let pts=db.points.filter(p=>p.meetingId===m.id);
-    if(st)pts=pts.filter(p=>p.status===st);
+    if(st) pts=pts.filter(p=>p.status===st);
+    if(im) pts=pts.filter(p=>p.impact===im);
     if(!pts.length)return;
     totalPts+=pts.length;
     const co=pts.filter(p=>p.status==='Concluído').length;
@@ -947,8 +962,8 @@ function buildReport(){
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;">
         <colgroup>
-          <col style="width:10%"><col style="width:15%"><col style="width:7%">
-          <col style="width:16%"><col style="width:16%"><col style="width:14%">
+          <col style="width:10%"><col style="width:15%"><col style="width:6%">
+          <col style="width:14%"><col style="width:14%"><col style="width:13%">
           <col style="width:8%"><col style="width:14%">
         </colgroup>
         <thead><tr style="background:var(--bg2);">
@@ -978,18 +993,18 @@ function buildReport(){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:1rem;margin-bottom:1.5rem;border-bottom:0.5px solid var(--border);">
       <div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-          <div class="logo" style="width:30px;height:30px;background:var(--green);border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="font-size:11px;color:#FFDE00 !important;font-weight:700;">IM</span></div>
+          <div class="logo" style="width:30px;height:30px;background:#367C2B!important;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="font-size:11px;color:#FFDE00!important;font-weight:700;">IM</span></div>
           <div style="font-size:18px;font-weight:600;">Relatório de Fechamento Orçamentário</div>
         </div>
         <div style="font-size:12px;color:var(--text2);">Iguaçu Máquinas · Controladoria Corporativa · Emitido em ${now}</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:2px;">${d||'Todos os departamentos'} · ${per?fmtPeriod(per):'Todos os períodos'} · ${st||'Todos os status'}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px;">${d||'Todos os departamentos'} ${cc?'· CC: '+cc:''} · ${per?fmtPeriod(per):'Todos os períodos'} · ${st||'Todos os status'}</div>
       </div>
       <div style="text-align:right;">
         <div style="font-size:28px;font-weight:600;">${totalPts}</div>
         <div style="font-size:12px;color:var(--text2);">pontos registrados</div>
       </div>
     </div>
-    ${rows||'<div class="empty"><p>Nenhum tópico encontrado com os filtros aplicados.</p></div>'}
+    ${rows||'<div class="empty"><p>Nenhum ponto encontrado com os filtros aplicados.</p></div>'}
   </div>`;
 }
 
